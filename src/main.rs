@@ -6,12 +6,12 @@ use std::env;
 
 #[allow(dead_code)]
 fn decode_bencoded_value(encoded_value: &str) -> serde_json::Value {
-    if let Some(rest) = encoded_value.strip_prefix("i") {
-        if let Some((digit, _)) = rest.split_once("e") {
-            if let Ok(digit) = digit.parse::<i64>() {
-                return digit.into();
-            }
-        }
+    if let Some(n) = encoded_value
+        .strip_prefix("i")
+        .and_then(|rest| rest.split_once("e"))
+        .and_then(|(digit, _)| digit.parse::<i64>().ok())
+    {
+        return n.into();
     } else if let Some((len, rest)) = encoded_value.split_once(":") {
         if let Ok(len) = len.parse::<usize>() {
             return serde_json::Value::String(rest[..len].to_string());

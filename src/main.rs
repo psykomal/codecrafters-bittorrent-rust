@@ -1,5 +1,5 @@
 use serde_json;
-use std::env;
+use std::{collections::BTreeMap, env};
 
 // Available if you need it!
 // use serde_bencode
@@ -23,6 +23,22 @@ fn decode_bencoded_value(encoded_value: &str) -> (serde_json::Value, &str) {
             }
             return (list.into(), &rest[1..]);
         }
+        Some('d') => {
+            let (_, mut rest) = encoded_value.split_once("d").unwrap();
+            let mut dict = serde_json::Map::new();
+            while !rest.is_empty() && !rest.starts_with("e") {
+                let (k, rem) = decode_bencoded_value(rest);
+                let k = match k {
+                    serde_json::Value::String(s) => s,
+                    _ => panic!("Unexpected key type"),
+                };
+
+                let (v, rem) = decode_bencoded_value(rem);
+                dict.insert(k, v);
+                rest = rem;
+            }
+            return (dict.into(), &rest[1..]);
+        }
         Some('0'..='9') => {
             let (n, rest) = encoded_value.split_once(":").unwrap();
             let n = n.parse::<usize>().unwrap();
@@ -32,8 +48,6 @@ fn decode_bencoded_value(encoded_value: &str) -> (serde_json::Value, &str) {
             panic!("Unexpected end of encoded value")
         }
     }
-
-    panic!("Unhandled encoded value: {}", encoded_value)
 }
 
 // Usage: your_bittorrent.sh decode "<encoded_value>"

@@ -1,9 +1,11 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use hashes::Hashes;
+use hex_literal::hex;
 use reqwest;
-use serde::{self, de::Visitor, Deserialize, Deserializer};
+use serde::{self, de::Visitor, Deserialize, Deserializer, Serialize};
 use serde_json;
+use sha1::{Digest, Sha1};
 use std::{collections::BTreeMap, env, fmt, path::PathBuf};
 
 #[derive(Parser, Debug)]
@@ -29,7 +31,7 @@ struct Torrent {
     info: Info,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct Info {
     // The name key maps to a UTF-8 encoded string which is the suggested name to save the file (or directory) as.
     // In the single file case, the name key is the name of a file, in the muliple file case, it's the name of a directory.
@@ -50,7 +52,7 @@ struct Info {
     keys: Keys,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 enum Keys {
     // If length is present then the download represents a single file,
@@ -66,7 +68,7 @@ enum Keys {
     MultiFile { files: Vec<File> },
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct File {
     length: usize,
     path: Vec<String>,
@@ -85,11 +87,17 @@ fn main() -> anyhow::Result<()> {
             let dot_torrent = std::fs::read(torrent).context("read torrent file")?;
             let torrent: Torrent =
                 serde_bencode::from_bytes(&dot_torrent).context("parse torrent file")?;
-            // println!("{torrent:?}");
+            let info_bencode = serde_bencode::to_bytes(&torrent.info).context("serialize info")?;
+
+            let mut hasher = Sha1::new();
+            hasher.update(info_bencode);
+            let result = hasher.finalize();
+
             println!("Tracker URL: {}", torrent.announce);
             if let Keys::SingleFile { length } = torrent.info.keys {
                 println!("Length: {}", length);
             }
+            println!("Info Hash: {}", hex::encode(result));
         }
     }
 
@@ -97,7 +105,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 mod hashes {
-    use serde::{self, de::Visitor, Deserialize, Deserializer};
+    use serde::{self, de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
     use std::fmt;
 
     #[derive(Debug, Clone)]
@@ -133,6 +141,16 @@ mod hashes {
             D: Deserializer<'de>,
         {
             deserializer.deserialize_bytes(HashesVisitor)
+        }
+    }
+
+    impl Serialize for Hashes {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let v = self.0.concat();
+            serializer.serialize_bytes(&v)
         }
     }
 }

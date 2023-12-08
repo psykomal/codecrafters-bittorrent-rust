@@ -1,12 +1,10 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use hashes::Hashes;
-use hex_literal::hex;
-use reqwest;
-use serde::{self, de::Visitor, Deserialize, Deserializer, Serialize};
+use serde::{self, Deserialize, Serialize};
 use serde_json;
 use sha1::{Digest, Sha1};
-use std::{collections::BTreeMap, env, fmt, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

@@ -98,6 +98,11 @@ fn main() -> anyhow::Result<()> {
                 println!("Length: {}", length);
             }
             println!("Info Hash: {}", hex::encode(result));
+            println!("Piece Length: {}", torrent.info.piece_length);
+            println!("Piece Hashes:");
+            for piece in torrent.info.pieces.0 {
+                println!("{}", hex::encode(piece));
+            }
         }
     }
 
@@ -109,7 +114,7 @@ mod hashes {
     use std::fmt;
 
     #[derive(Debug, Clone)]
-    pub struct Hashes(Vec<[u8; 20]>);
+    pub struct Hashes(pub Vec<[u8; 20]>);
     struct HashesVisitor;
 
     impl<'de> Visitor<'de> for HashesVisitor {

@@ -1,5 +1,6 @@
 use anyhow::Context;
 use bittorrent_starter_rust::{
+    peer::Handshake,
     torrent::*,
     tracker::{urlencode, TrackerRequest, TrackerResponse},
 };
@@ -11,8 +12,11 @@ use serde_json;
 use sha1::{Digest, Sha1};
 use std::{
     fmt::format,
+    net::SocketAddrV4,
     path::{Path, PathBuf},
+    str::FromStr,
 };
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -27,6 +31,7 @@ enum Command {
     Decode { value: String },
     Info { torrent: PathBuf },
     Peers { torrent: PathBuf },
+    Handshake { torrent: PathBuf, peer: String },
 }
 
 #[tokio::main]
@@ -100,6 +105,36 @@ async fn main() -> anyhow::Result<()> {
             for peer in tracker_response.peers.0.iter() {
                 println!("{}:{}", peer.ip(), peer.port());
             }
+        }
+        Command::Handshake { torrent, peer } => {
+            let dot_torrent = std::fs::read(torrent).context("read torrent file")?;
+            let torrent: Torrent =
+                serde_bencode::from_bytes(&dot_torrent).context("parse torrent file")?;
+
+            let info_hash = torrent.info_hash();
+            let peer = SocketAddrV4::from_str(&peer).context("parse peer address")?;
+            let mut peer = tokio::net::TcpStream::connect(peer)
+                .await
+                .context("connect to peer")?;
+
+            let mut handshake = Handshake::new(info_hash, *b"00112233445566778899");
+            {
+                let handshake_bytes =
+                    &mut handshake as *mut Handshake as *mut [u8; std::mem::size_of::<Handshake>()];
+                // Safety: Handshake is a POD with repr(c) and repr(packed)
+                let handshake_bytes: &mut [u8; std::mem::size_of::<Handshake>()] =
+                    unsafe { &mut *handshake_bytes };
+                peer.write_all(handshake_bytes)
+                    .await
+                    .context("write handshake")?;
+                peer.read_exact(handshake_bytes)
+                    .await
+                    .context("read handshake")?;
+            }
+
+            assert_eq!(handshake.length, 19);
+            assert_eq!(&handshake.bittorrent, b"BitTorrent protocol");
+            println!("Peer ID: {}", hex::encode(&handshake.peer_id));
         }
     }
 

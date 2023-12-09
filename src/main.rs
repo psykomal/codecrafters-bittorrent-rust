@@ -1,11 +1,13 @@
 use anyhow::Context;
 use bittorrent_starter_rust::{
-    peer::Handshake,
+    peer::{Handshake, Message, MessageFramer, MessageTag, PieceResponse, Request},
     torrent::*,
     tracker::{urlencode, TrackerRequest, TrackerResponse},
 };
 use clap::{Parser, Subcommand};
+use futures_util::{SinkExt, StreamExt};
 use hashes::Hashes;
+use rand::Rng;
 use reqwest;
 use serde::{self, Deserialize, Serialize};
 use serde_json;
@@ -18,6 +20,8 @@ use std::{
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+pub const BLOCK_MAX: u32 = 1 << 14;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -27,11 +31,27 @@ struct Args {
 }
 
 #[derive(Subcommand, Debug)]
+#[clap(rename_all = "snake_case")]
 enum Command {
-    Decode { value: String },
-    Info { torrent: PathBuf },
-    Peers { torrent: PathBuf },
-    Handshake { torrent: PathBuf, peer: String },
+    Decode {
+        value: String,
+    },
+    Info {
+        torrent: PathBuf,
+    },
+    Peers {
+        torrent: PathBuf,
+    },
+    Handshake {
+        torrent: PathBuf,
+        peer: String,
+    },
+    DownloadPiece {
+        #[arg(short)]
+        output: PathBuf,
+        torrent: PathBuf,
+        piece: usize,
+    },
 }
 
 #[tokio::main]
@@ -130,6 +150,165 @@ async fn main() -> anyhow::Result<()> {
             assert_eq!(handshake.length, 19);
             assert_eq!(&handshake.bittorrent, b"BitTorrent protocol");
             println!("Peer ID: {}", hex::encode(&handshake.peer_id));
+        }
+        Command::DownloadPiece {
+            output,
+            torrent,
+            piece,
+        } => {
+            let dot_torrent = std::fs::read(torrent).context("read torrent file")?;
+            let torrent: Torrent =
+                serde_bencode::from_bytes(&dot_torrent).context("parse torrent file")?;
+
+            let info_hash = torrent.info_hash();
+            let length = if let Keys::SingleFile { length } = torrent.info.keys {
+                length
+            } else {
+                0
+            };
+
+            // Tracker request for peers
+            let request = TrackerRequest {
+                peer_id: String::from("00112233445566778899"),
+                port: 6881,
+                uploaded: 0,
+                downloaded: 0,
+                left: length,
+                compact: 1,
+            };
+
+            let url_params =
+                serde_urlencoded::to_string(&request).context("Request to URL params")?;
+            let tracker_url = format!(
+                "{}?{}&info_hash={}",
+                torrent.announce,
+                url_params,
+                urlencode(&info_hash).expect("encode info hash")
+            );
+
+            let response = reqwest::get(tracker_url).await?;
+            let response = response.bytes().await?;
+            let tracker_response: TrackerResponse =
+                serde_bencode::from_bytes(&response).context("deserialize response")?;
+            for peer in tracker_response.peers.0.iter() {
+                println!("{}:{}", peer.ip(), peer.port());
+            }
+            let peers = tracker_response.peers.0;
+            let range = rand::thread_rng().gen_range(0..peers.len());
+            let peer = peers[range];
+
+            // Handshake
+            let mut peer = tokio::net::TcpStream::connect(peer)
+                .await
+                .context("connect to peer")?;
+
+            let mut handshake = Handshake::new(info_hash, *b"00112233445566778899");
+
+            peer.write_all(&bincode::serialize(&handshake).unwrap())
+                .await?;
+
+            let mut buf = [0; 68];
+            peer.read_exact(&mut buf).await?;
+
+            let handshake: Handshake = bincode::deserialize(&buf).unwrap();
+
+            assert_eq!(handshake.length, 19);
+            assert_eq!(&handshake.bittorrent, b"BitTorrent protocol");
+            println!("Peer ID: {}", hex::encode(&handshake.peer_id));
+
+            /// Download piece
+            let mut peer = tokio_util::codec::Framed::new(peer, MessageFramer);
+
+            // Receive Bitfield msg
+            let msg = peer
+                .next()
+                .await
+                .expect("peers always sends the first msg")
+                .context("peer msg was invalid")?;
+            eprintln!("msg: {:?}", msg);
+            assert_eq!(msg.tag, MessageTag::Bitfield);
+
+            // Send interested msg
+            peer.send(Message {
+                tag: MessageTag::Interested,
+                payload: vec![],
+            })
+            .await
+            .context("send interested message")?;
+
+            // recv unchoke
+            let msg = peer
+                .next()
+                .await
+                .expect("peer next msg")
+                .context("peer msg was invalid")?;
+            eprintln!("msg: {:?}", msg);
+            assert_eq!(msg.tag, MessageTag::Unchoke);
+
+            // Download a piece
+            let piece_length = torrent.info.piece_length as u32;
+            let piece_hash = torrent.info.pieces.0[piece];
+            let mut piece_buf: Vec<u8> = Vec::with_capacity(piece_length as usize);
+
+            let mut start: u32 = 0;
+            eprintln!(
+                "piece_length: {} num : {}",
+                piece_length,
+                f64::ceil(piece_length as f64 / BLOCK_MAX as f64)
+            );
+            while start < piece_length {
+                let l = if piece_length - start >= BLOCK_MAX {
+                    BLOCK_MAX
+                } else {
+                    piece_length - start
+                };
+                let req = Request::new(piece as u32, start / BLOCK_MAX, l as u32);
+                let req_bincode = bincode::serialize(&req).unwrap();
+
+                // Send request msg
+                peer.send(Message {
+                    tag: MessageTag::Request,
+                    payload: req_bincode,
+                })
+                .await
+                .context("send request msg")?;
+
+                // Recv piece msg
+                let piece_msg = peer
+                    .next()
+                    .await
+                    .expect("peer next msg")
+                    .context("peer msg was invalid")?;
+                // eprintln!("piece_msg: {:?}", piece_msg);
+                assert_eq!(piece_msg.tag, MessageTag::Piece);
+
+                let piece_response: PieceResponse = PieceResponse::from_bytes(&piece_msg.payload);
+                eprintln!(
+                    "piece resp : {} {} {}",
+                    u32::from_be_bytes(piece_response.index),
+                    u32::from_be_bytes(piece_response.begin),
+                    piece_response.block.len()
+                );
+                assert_eq!(u32::from_be_bytes(piece_response.index), piece as u32);
+                assert_eq!(u32::from_be_bytes(piece_response.begin), start / BLOCK_MAX);
+
+                // let mut block = piece_response.block;
+                // block.extend(piece_buf);
+                // piece_buf = block;
+                piece_buf.extend(piece_response.block);
+
+                start += BLOCK_MAX;
+            }
+
+            piece_buf.reverse();
+
+            assert_eq!(piece_buf.len(), 2 * piece_length as usize);
+
+            // calc hash
+            let mut hasher = Sha1::new();
+            hasher.update(piece_buf);
+            let info_hash: [u8; 20] = hasher.finalize().into();
+            assert_eq!(info_hash, piece_hash);
         }
     }
 

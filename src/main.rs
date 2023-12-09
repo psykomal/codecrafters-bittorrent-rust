@@ -118,19 +118,14 @@ async fn main() -> anyhow::Result<()> {
                 .context("connect to peer")?;
 
             let mut handshake = Handshake::new(info_hash, *b"00112233445566778899");
-            {
-                let handshake_bytes =
-                    &mut handshake as *mut Handshake as *mut [u8; std::mem::size_of::<Handshake>()];
-                // Safety: Handshake is a POD with repr(c) and repr(packed)
-                let handshake_bytes: &mut [u8; std::mem::size_of::<Handshake>()] =
-                    unsafe { &mut *handshake_bytes };
-                peer.write_all(handshake_bytes)
-                    .await
-                    .context("write handshake")?;
-                peer.read_exact(handshake_bytes)
-                    .await
-                    .context("read handshake")?;
-            }
+
+            peer.write_all(&bincode::serialize(&handshake).unwrap())
+                .await?;
+
+            let mut buf = [0; 68];
+            peer.read_exact(&mut buf).await?;
+
+            let handshake: Handshake = bincode::deserialize(&buf).unwrap();
 
             assert_eq!(handshake.length, 19);
             assert_eq!(&handshake.bittorrent, b"BitTorrent protocol");

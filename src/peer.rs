@@ -1,6 +1,7 @@
-use serde::Serialize;
+use serde::{self, de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
 
-#[repr(C)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Handshake {
     //     length of the protocol string (BitTorrent protocol) which is 19 (1 byte)
     pub length: u8,

@@ -156,7 +156,7 @@ async fn main() -> anyhow::Result<()> {
             }
             let peers_len = peers.len();
             let range = rand::thread_rng().gen_range(0..peers_len);
-            let peer = peers[range];
+            let peer = peers[1];
 
             // Handshake
             let mut peer = tokio::net::TcpStream::connect(peer)
@@ -238,7 +238,7 @@ async fn main() -> anyhow::Result<()> {
             }
             let peers_len = peers.len();
             let range = rand::thread_rng().gen_range(0..peers_len);
-            let peer = peers[range];
+            let peer = peers[1];
 
             // Handshake
             let mut peer = tokio::net::TcpStream::connect(peer)

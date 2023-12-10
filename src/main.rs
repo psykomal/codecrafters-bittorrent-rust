@@ -262,7 +262,7 @@ async fn main() -> anyhow::Result<()> {
             /// Download piece
             let mut peer = tokio_util::codec::Framed::new(peer, MessageFramer);
 
-            // Receive Bitfield msg
+            //Receive Bitfield msg
             let msg = peer
                 .next()
                 .await

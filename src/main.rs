@@ -133,17 +133,22 @@ async fn main() -> anyhow::Result<()> {
 
             let info_hash = torrent.info_hash();
             let peer = SocketAddrV4::from_str(&peer).context("parse peer address")?;
+            eprintln!("yo");
             let mut peer = tokio::net::TcpStream::connect(peer)
                 .await
                 .context("connect to peer")?;
 
-            let mut handshake = Handshake::new(info_hash, *b"00112233445566778899");
+            eprintln!("yoyo");
+
+            let handshake = Handshake::new(info_hash, *b"00112233445566778899");
 
             peer.write_all(&bincode::serialize(&handshake).unwrap())
                 .await?;
+            eprintln!("yoyo1");
 
-            let mut buf = [0; 68];
-            peer.read_exact(&mut buf).await?;
+            let mut buf = [0; 100000];
+            peer.read(&mut buf).await?;
+            eprintln!("yoyo2");
 
             let handshake: Handshake = bincode::deserialize(&buf).unwrap();
 

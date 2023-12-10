@@ -247,7 +247,18 @@ async fn main() -> anyhow::Result<()> {
             assert_eq!(msg.tag, MessageTag::Unchoke);
 
             // Download a piece
-            let piece_length = torrent.info.piece_length as u32;
+            let piece_length = if piece < torrent.info.pieces.0.len() - 1 {
+                torrent.info.piece_length as u32
+            } else {
+                let pl = torrent.info.piece_length;
+                let file_len = length;
+                let rem = file_len % pl;
+                if rem == 0 {
+                    pl as u32
+                } else {
+                    rem as u32
+                }
+            };
             let piece_hash = torrent.info.pieces.0[piece];
             let mut piece_buf: Vec<u8> = Vec::with_capacity(piece_length as usize);
 
@@ -264,7 +275,7 @@ async fn main() -> anyhow::Result<()> {
                     piece_length - start
                 };
                 let req = Request::new(piece as u32, start, l as u32);
-                eprintln!("req: {} {} {}", piece, start, l as u32);
+                // eprintln!("req: {} {} {}", piece, start, l as u32);
 
                 let req_bincode = bincode::serialize(&req).unwrap();
 
@@ -286,12 +297,12 @@ async fn main() -> anyhow::Result<()> {
                 assert_eq!(piece_msg.tag, MessageTag::Piece);
 
                 let piece_response: PieceResponse = PieceResponse::from_bytes(&piece_msg.payload);
-                eprintln!(
-                    "p resp: {} {} {}",
-                    u32::from_be_bytes(piece_response.index),
-                    u32::from_be_bytes(piece_response.begin),
-                    piece_response.block.len()
-                );
+                // eprintln!(
+                //     "p resp: {} {} {}",
+                //     u32::from_be_bytes(piece_response.index),
+                //     u32::from_be_bytes(piece_response.begin),
+                //     piece_response.block.len()
+                // );
                 assert_eq!(u32::from_be_bytes(piece_response.index), piece as u32);
                 assert_eq!(u32::from_be_bytes(piece_response.begin), start);
 

@@ -284,12 +284,12 @@ async fn main() -> anyhow::Result<()> {
                 assert_eq!(piece_msg.tag, MessageTag::Piece);
 
                 let piece_response: PieceResponse = PieceResponse::from_bytes(&piece_msg.payload);
-                // eprintln!(
-                //     "piece resp : {} {} {}",
-                //     u32::from_be_bytes(piece_response.index),
-                //     u32::from_be_bytes(piece_response.begin),
-                //     piece_response.block.len()
-                // );
+                eprintln!(
+                    "piece resp : {} {} {}",
+                    u32::from_be_bytes(piece_response.index),
+                    u32::from_be_bytes(piece_response.begin),
+                    piece_response.block.len()
+                );
                 assert_eq!(u32::from_be_bytes(piece_response.index), piece as u32);
                 assert_eq!(u32::from_be_bytes(piece_response.begin), start);
 

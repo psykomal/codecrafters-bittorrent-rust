@@ -122,17 +122,17 @@ impl Decoder for MessageFramer {
         length_bytes.copy_from_slice(&src[..4]);
         let length = u32::from_be_bytes(length_bytes) as usize;
 
-        if length == 0 {
-            // hearbeat msg
-            // discard it
-            src.advance(4);
-            // try again in case buffer has more msgs
-            return self.decode(src);
-        }
-        if src.len() < 5 {
-            // Not enough data to read length marker + tag.
-            return Ok(None);
-        }
+        // if length == 0 {
+        //     // hearbeat msg
+        //     // discard it
+        //     src.advance(4);
+        //     // try again in case buffer has more msgs
+        //     return self.decode(src);
+        // }
+        // if src.len() < 5 {
+        //     // Not enough data to read length marker + tag.
+        //     return Ok(None);
+        // }
 
         // Check that the length is not too large to avoid a denial of
         // service attack where the server runs out of memory.

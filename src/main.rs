@@ -285,7 +285,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let piece_response: PieceResponse = PieceResponse::from_bytes(&piece_msg.payload);
                 eprintln!(
-                    "piece resp : {} {} {}",
+                    "p resp: {} {} {}",
                     u32::from_be_bytes(piece_response.index),
                     u32::from_be_bytes(piece_response.begin),
                     piece_response.block.len()

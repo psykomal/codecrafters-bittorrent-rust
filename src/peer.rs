@@ -112,7 +112,7 @@ impl Decoder for MessageFramer {
     type Error = std::io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if src.len() < 5 {
+        if src.len() < 4 {
             // Not enough data to read length marker + tag.
             return Ok(None);
         }
@@ -128,6 +128,10 @@ impl Decoder for MessageFramer {
             src.advance(4);
             // try again in case buffer has more msgs
             return self.decode(src);
+        }
+        if src.len() < 5 {
+            // Not enough data to read length marker + tag.
+            return Ok(None);
         }
 
         // Check that the length is not too large to avoid a denial of

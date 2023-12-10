@@ -164,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
             let dot_torrent = std::fs::read(torrent).context("read torrent file")?;
             let torrent: Torrent =
                 serde_bencode::from_bytes(&dot_torrent).context("parse torrent file")?;
+            eprintln!("torrent: {:?}", torrent);
 
             let info_hash = torrent.info_hash();
             let length = if let Keys::SingleFile { length } = torrent.info.keys {
@@ -200,7 +201,7 @@ async fn main() -> anyhow::Result<()> {
             }
             let peers = tracker_response.peers.0;
             let range = rand::thread_rng().gen_range(0..peers.len());
-            let peer = peers[range];
+            let peer = peers[0];
 
             // Handshake
             let mut peer = tokio::net::TcpStream::connect(peer)
@@ -267,7 +268,7 @@ async fn main() -> anyhow::Result<()> {
                 } else {
                     piece_length - start
                 };
-                let req = Request::new(piece as u32, start / BLOCK_MAX, l as u32);
+                let req = Request::new(piece as u32, start, l as u32);
                 let req_bincode = bincode::serialize(&req).unwrap();
 
                 // Send request msg
@@ -295,7 +296,7 @@ async fn main() -> anyhow::Result<()> {
                     piece_response.block.len()
                 );
                 assert_eq!(u32::from_be_bytes(piece_response.index), piece as u32);
-                assert_eq!(u32::from_be_bytes(piece_response.begin), start / BLOCK_MAX);
+                assert_eq!(u32::from_be_bytes(piece_response.begin), start);
 
                 // let mut block = piece_response.block;
                 // block.extend(piece_buf);
@@ -305,15 +306,20 @@ async fn main() -> anyhow::Result<()> {
                 start += BLOCK_MAX;
             }
 
-            piece_buf.reverse();
+            // piece_buf.reverse();
 
-            assert_eq!(piece_buf.len(), 2 * piece_length as usize);
+            assert_eq!(piece_buf.len(), piece_length as usize);
 
             // calc hash
             let mut hasher = Sha1::new();
-            hasher.update(piece_buf);
+            hasher.update(&piece_buf);
             let info_hash: [u8; 20] = hasher.finalize().into();
             assert_eq!(info_hash, piece_hash);
+
+            tokio::fs::write(&output, piece_buf)
+                .await
+                .context("write out downloaded piece")?;
+            println!("Piece {piece} downloaded to {}.", output.display());
         }
     }
 

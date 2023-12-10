@@ -133,22 +133,17 @@ async fn main() -> anyhow::Result<()> {
 
             let info_hash = torrent.info_hash();
             let peer = SocketAddrV4::from_str(&peer).context("parse peer address")?;
-            eprintln!("yo");
             let mut peer = tokio::net::TcpStream::connect(peer)
                 .await
                 .context("connect to peer")?;
-
-            eprintln!("yoyo");
 
             let handshake = Handshake::new(info_hash, *b"00112233445566778899");
 
             peer.write_all(&bincode::serialize(&handshake).unwrap())
                 .await?;
-            eprintln!("yoyo1");
 
             let mut buf = [0; 100000];
             peer.read(&mut buf).await?;
-            eprintln!("yoyo2");
 
             let handshake: Handshake = bincode::deserialize(&buf).unwrap();
 
@@ -164,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
             let dot_torrent = std::fs::read(torrent).context("read torrent file")?;
             let torrent: Torrent =
                 serde_bencode::from_bytes(&dot_torrent).context("parse torrent file")?;
-            eprintln!("torrent: {:?}", torrent);
+            // eprintln!("torrent: {:?}", torrent);
 
             let info_hash = torrent.info_hash();
             let length = if let Keys::SingleFile { length } = torrent.info.keys {
@@ -201,7 +196,7 @@ async fn main() -> anyhow::Result<()> {
             }
             let peers = tracker_response.peers.0;
             let range = rand::thread_rng().gen_range(0..peers.len());
-            let peer = peers[0];
+            let peer = peers[range];
 
             // Handshake
             let mut peer = tokio::net::TcpStream::connect(peer)
@@ -231,7 +226,7 @@ async fn main() -> anyhow::Result<()> {
                 .await
                 .expect("peers always sends the first msg")
                 .context("peer msg was invalid")?;
-            eprintln!("msg: {:?}", msg);
+            // eprintln!("msg: {:?}", msg);
             assert_eq!(msg.tag, MessageTag::Bitfield);
 
             // Send interested msg
@@ -248,7 +243,7 @@ async fn main() -> anyhow::Result<()> {
                 .await
                 .expect("peer next msg")
                 .context("peer msg was invalid")?;
-            eprintln!("msg: {:?}", msg);
+            // eprintln!("msg: {:?}", msg);
             assert_eq!(msg.tag, MessageTag::Unchoke);
 
             // Download a piece
@@ -257,11 +252,11 @@ async fn main() -> anyhow::Result<()> {
             let mut piece_buf: Vec<u8> = Vec::with_capacity(piece_length as usize);
 
             let mut start: u32 = 0;
-            eprintln!(
-                "piece_length: {} num : {}",
-                piece_length,
-                f64::ceil(piece_length as f64 / BLOCK_MAX as f64)
-            );
+            // eprintln!(
+            //     "piece_length: {} num : {}",
+            //     piece_length,
+            //     f64::ceil(piece_length as f64 / BLOCK_MAX as f64)
+            // );
             while start < piece_length {
                 let l = if piece_length - start >= BLOCK_MAX {
                     BLOCK_MAX
@@ -289,12 +284,12 @@ async fn main() -> anyhow::Result<()> {
                 assert_eq!(piece_msg.tag, MessageTag::Piece);
 
                 let piece_response: PieceResponse = PieceResponse::from_bytes(&piece_msg.payload);
-                eprintln!(
-                    "piece resp : {} {} {}",
-                    u32::from_be_bytes(piece_response.index),
-                    u32::from_be_bytes(piece_response.begin),
-                    piece_response.block.len()
-                );
+                // eprintln!(
+                //     "piece resp : {} {} {}",
+                //     u32::from_be_bytes(piece_response.index),
+                //     u32::from_be_bytes(piece_response.begin),
+                //     piece_response.block.len()
+                // );
                 assert_eq!(u32::from_be_bytes(piece_response.index), piece as u32);
                 assert_eq!(u32::from_be_bytes(piece_response.begin), start);
 

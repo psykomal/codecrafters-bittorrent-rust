@@ -5,7 +5,7 @@
 # CodeCrafters uses this file to test your code. Don't make any changes here!
 #
 # DON'T EDIT THIS!
-exec cargo run \
+exec cargo run --quiet \
     --release \
     --target-dir=/tmp/codecrafters-bittorrent-target \
     --manifest-path $(dirname "$0")/Cargo.toml -- "$@"

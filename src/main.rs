@@ -264,6 +264,8 @@ async fn main() -> anyhow::Result<()> {
                     piece_length - start
                 };
                 let req = Request::new(piece as u32, start, l as u32);
+                eprintln!("req: {} {} {}", piece, start, l as u32);
+
                 let req_bincode = bincode::serialize(&req).unwrap();
 
                 // Send request msg
